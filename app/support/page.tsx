@@ -161,7 +161,10 @@ async function RefundConsole() {
                       {r.status === "approved" ? "refunded" : "rejected"}
                     </Badge>
                     <p className="text-muted-foreground mt-1 text-xs">
-                      {r.admin_note ?? "Approved by an admin"}
+                      {r.admin_note ??
+                        (r.status === "approved"
+                          ? "Approved by an admin"
+                          : "Rejected by an admin")}
                     </p>
                   </TableCell>
                 </TableRow>
