@@ -1,8 +1,14 @@
 // @vitest-environment node
 // Refund rules, the Refund agent's tools and the admin decision. Everything
 // runs on the in-memory demo store, so it costs nothing and needs no database.
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { decideRefund } from "@/lib/copper/admin/decide";
+import { decideInConsole } from "@/app/support/actions";
+import { decisionNotice } from "@/lib/copper/refunds/events";
+import {
+  getAutoRefundLimit,
+  setAutoRefundLimit,
+} from "@/lib/copper/refunds/settings";
 import { checkPassword } from "@/lib/copper/admin/session";
 import { readInventory } from "@/lib/copper/inventory";
 import { createMemoryStore } from "@/lib/copper/refunds/memory-store";
@@ -18,6 +24,9 @@ import {
   requestRefund,
 } from "@/lib/copper/refunds/tools";
 import type { Order } from "@/lib/copper/refunds/types";
+
+// Outside the running app there is no page to refresh.
+vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 
 const DAY = 24 * 60 * 60 * 1000;
 const NOW = Date.parse("2026-11-17T12:00:00Z");
@@ -253,11 +262,13 @@ describe("Refund agent tools", () => {
     ).toMatchObject({
       status: "not_eligible",
     });
+    // A second request for the same order is refused (duplicate).
     expect(
-      await requestRefund("finn@example.com", "ORD-1006", "x"),
-    ).toMatchObject({
-      status: "not_eligible",
-    });
+      await requestRefund("finn@example.com", "ORD-1006", "first"),
+    ).toMatchObject({ status: "created" });
+    expect(
+      await requestRefund("finn@example.com", "ORD-1006", "again"),
+    ).toMatchObject({ status: "not_eligible" });
     expect(await requestRefund("ben@example.com", "ORD-1001", "x")).toEqual({
       status: "not_found",
     });
@@ -320,14 +331,67 @@ describe("admin decisions", () => {
   });
 
   it("a request can be decided only once", async () => {
-    const [seeded] = await getStore().listRequests();
-    expect(seeded.id).toBe("REQ-1000");
-    await decideRefund("REQ-1000", "approved", null);
+    await requestRefund("finn@example.com", "ORD-1006", "Too big");
+    const [request] = await getStore().listRequests();
+    await decideRefund(request.id, "approved", null);
     const stock = await units("CH-NSK");
-    expect(await decideRefund("REQ-1000", "approved", null)).toEqual({
+    expect(await decideRefund(request.id, "approved", null)).toEqual({
+      status: "already_decided",
+    });
+    expect(await decideRefund(request.id, "rejected", null)).toEqual({
       status: "already_decided",
     });
     expect(await units("CH-NSK")).toBe(stock);
+  });
+});
+
+describe("changeable limit and the Support page's actions", () => {
+  it("the limit an admin saves wins over the default, for the rules and the agent", async () => {
+    delete process.env.AUTO_REFUND_LIMIT_USD;
+    expect(await getAutoRefundLimit()).toBe(100);
+    expect(await setAutoRefundLimit(200)).toBe(true);
+    expect(await getAutoRefundLimit()).toBe(200);
+    // Ava's $149 refund is now automatic.
+    expect(
+      await requestRefund("ava@example.com", "ORD-1001", "Too big"),
+    ).toMatchObject({ status: "auto_approved" });
+    // And a limit of $0 makes everything wait for an admin.
+    expect(await setAutoRefundLimit(0)).toBe(true);
+    expect(
+      await requestRefund("cara@example.com", "ORD-1003", "No thanks"),
+    ).toMatchObject({ status: "created" });
+  });
+
+  it("refuses limits that aren't a dollar amount", async () => {
+    expect(await setAutoRefundLimit(-5)).toBe(false);
+    expect(await setAutoRefundLimit(Number.NaN)).toBe(false);
+    expect(await getAutoRefundLimit()).toBe(autoRefundLimitUsd());
+  });
+
+  it("approve and reject from the console return what the chat should tell the customer", async () => {
+    delete process.env.AUTO_REFUND_LIMIT_USD;
+    await requestRefund("ava@example.com", "ORD-1001", "Too big");
+    await requestRefund("finn@example.com", "ORD-1006", "Changed my mind");
+    const pending = await getStore().listRequests();
+    const ava = pending.find((r) => r.customer_email === "ava@example.com")!;
+    const finn = pending.find((r) => r.customer_email === "finn@example.com")!;
+
+    const approved = await decideInConsole(ava.id, "approved");
+    expect(approved.result).toMatchObject({ status: "approved" });
+    expect(approved.detail).toMatchObject({
+      email: "ava@example.com",
+      status: "approved",
+      amountUsd: 149,
+    });
+    expect(decisionNotice(approved.detail!)).toMatch(/approved/);
+
+    const rejected = await decideInConsole(finn.id, "rejected");
+    expect(rejected.detail?.status).toBe("rejected");
+    expect(decisionNotice(rejected.detail!)).toMatch(
+      /did not approve it[\s\S]*not refunded/,
+    );
+    expect((await getStore().getOrder("ORD-1006"))?.refund_status).toBe("none");
+    expect((await decideInConsole(finn.id, "rejected")).detail).toBeUndefined();
   });
 });
 

@@ -37,6 +37,11 @@ import {
   TOOLS_BY_AGENT,
 } from "@/lib/copper/assistant/progress";
 import { formatUsd, getPlans, getProducts } from "@/lib/copper/catalog";
+import {
+  decisionNotice,
+  REFUND_DECIDED_EVENT,
+  type RefundDecidedDetail,
+} from "@/lib/copper/refunds/events";
 import { cn } from "@/lib/utils";
 
 const STARTERS = [
@@ -54,12 +59,20 @@ const DEMO_EMAILS = [
   "finn@example.com",
 ];
 
-type Turn = { question: string; progress: Progress };
+/** A `notice` is a message from the app (like "your refund was approved"). */
+type Turn = { question: string; progress: Progress; notice?: boolean };
 type Chats = { tools: Turn[]; noTools: Turn[] };
 
 const WORKING: Progress = { steps: [], reply: "", status: "working" };
 
-export function AskCopper({ aiConfigured }: { aiConfigured: boolean }) {
+export function AskCopper({
+  aiConfigured,
+  docked = false,
+}: {
+  aiConfigured: boolean;
+  /** Show the chat as a column on the page (the Support page) instead of a pop-out. */
+  docked?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const [useTools, setUseTools] = useState(true);
   const [chats, setChats] = useState<Chats>({ tools: [], noTools: [] });
@@ -91,6 +104,33 @@ export function AskCopper({ aiConfigured }: { aiConfigured: boolean }) {
     if (body.current) body.current.scrollTop = body.current.scrollHeight;
   }, [chats, useTools]);
 
+  // When an admin decides a refund in the Refund Console, tell the customer
+  // here, if the decision is about the email this chat is using.
+  const emailNow = useRef(email);
+  useEffect(() => {
+    emailNow.current = email;
+  }, [email]);
+  useEffect(() => {
+    const onDecided = (event: Event) => {
+      const detail = (event as CustomEvent<RefundDecidedDetail>).detail;
+      if (detail.email.toLowerCase() !== emailNow.current.trim().toLowerCase())
+        return;
+      const notice: Turn = {
+        question: "",
+        notice: true,
+        progress: {
+          agent: "refund",
+          steps: [],
+          reply: decisionNotice(detail),
+          status: "done",
+        },
+      };
+      setChats((all) => ({ ...all, tools: [...all.tools, notice] }));
+    };
+    window.addEventListener(REFUND_DECIDED_EVENT, onDecided);
+    return () => window.removeEventListener(REFUND_DECIDED_EVENT, onDecided);
+  }, []);
+
   async function send(question: string) {
     question = question.trim();
     if (!question || busy) return;
@@ -99,10 +139,12 @@ export function AskCopper({ aiConfigured }: { aiConfigured: boolean }) {
     const index = turns.length;
     // Only finished turns go to the model: questions and Copper's replies.
     const messages: ChatMessage[] = [
-      ...turns.flatMap(({ question, progress }): ChatMessage[] => [
-        { role: "user", content: question },
-        { role: "assistant", content: progress.reply },
-      ]),
+      ...turns
+        .filter((turn) => !turn.notice)
+        .flatMap(({ question, progress }): ChatMessage[] => [
+          { role: "user", content: question },
+          { role: "assistant", content: progress.reply },
+        ]),
       { role: "user", content: question },
     ];
     const setProgress = (progress: Progress) =>
@@ -139,7 +181,7 @@ export function AskCopper({ aiConfigured }: { aiConfigured: boolean }) {
 
   return (
     <>
-      {!open && (
+      {!open && !docked && (
         <Button
           data-testid="ask-copper-launcher"
           aria-label="Ask Copper"
@@ -150,26 +192,31 @@ export function AskCopper({ aiConfigured }: { aiConfigured: boolean }) {
           Ask Copper
         </Button>
       )}
-      <Sheet open={open} onOpenChange={setOpen}>
-        <SheetContent
-          data-testid="ask-copper"
-          side="right"
-          showCloseButton={false}
-          className="gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-md"
-        >
-          <header className="bg-chart-5 dark:bg-background text-white">
-            <div className="flex items-center gap-3 px-4 pt-4 pb-3">
-              <span className="bg-primary flex size-10 shrink-0 items-center justify-center rounded-full">
-                <MessageCircleIcon className="size-5" />
-              </span>
-              <div className="min-w-0 flex-1">
+      <Shell docked={docked} open={open} onOpenChange={setOpen}>
+        <header className="bg-chart-5 dark:bg-background text-white">
+          <div className="flex items-center gap-3 px-4 pt-4 pb-3">
+            <span className="bg-primary flex size-10 shrink-0 items-center justify-center rounded-full">
+              <MessageCircleIcon className="size-5" />
+            </span>
+            <div className="min-w-0 flex-1">
+              {docked ? (
+                <h2 className="text-base font-bold text-white">Ask Copper</h2>
+              ) : (
                 <SheetTitle className="text-base font-bold text-white">
                   Ask Copper
                 </SheetTitle>
+              )}
+              {docked ? (
+                <p className="text-xs text-white/70">
+                  Prices, stock, support and refunds, checked with tools.
+                </p>
+              ) : (
                 <SheetDescription className="text-xs text-white/70">
                   Prices, totals and stock, checked with tools.
                 </SheetDescription>
-              </div>
+              )}
+            </div>
+            {!docked && (
               <SheetClose asChild>
                 <Button
                   variant="ghost"
@@ -180,116 +227,161 @@ export function AskCopper({ aiConfigured }: { aiConfigured: boolean }) {
                   <span className="sr-only">Close</span>
                 </Button>
               </SheetClose>
-            </div>
-            {aiConfigured && useTools && (
-              <div className="flex items-center gap-3 bg-white/10 px-4 py-2">
-                <label
-                  htmlFor="customer-email"
-                  className="text-xs font-semibold whitespace-nowrap"
-                >
-                  Your order email
-                </label>
-                <input
-                  id="customer-email"
-                  list="demo-emails"
-                  type="email"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  placeholder="ava@example.com"
-                  className="h-8 min-w-0 flex-1 rounded-md bg-white/90 px-2 text-xs text-black outline-none"
-                />
-                <datalist id="demo-emails">
-                  {DEMO_EMAILS.map((demo) => (
-                    <option key={demo} value={demo} />
-                  ))}
-                </datalist>
-              </div>
             )}
-            {aiConfigured && (
-              <div className="flex items-center gap-3 bg-white/10 px-4 py-2">
-                <div className="flex-1 text-sm">
-                  <span className="font-semibold">Use tools</span>
-                  <span className="ml-2 text-xs text-white/70">
-                    {useTools ? "Checks every answer" : "Model guesses alone"}
-                  </span>
-                </div>
-                <Switch
-                  aria-label="Use tools"
-                  checked={useTools}
-                  onCheckedChange={setUseTools}
-                />
-              </div>
-            )}
-          </header>
-
-          {aiConfigured ? (
-            <>
-              <div
-                ref={body}
-                className="bg-secondary flex-1 space-y-6 overflow-y-auto px-4 py-5"
+          </div>
+          {aiConfigured && useTools && (
+            <div className="flex items-center gap-3 bg-white/10 px-4 py-2">
+              <label
+                htmlFor="customer-email"
+                className="text-xs font-semibold whitespace-nowrap"
               >
-                {turns.map((turn, i) => (
+                Your order email
+              </label>
+              <input
+                id="customer-email"
+                list="demo-emails"
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="ava@example.com"
+                className="h-8 min-w-0 flex-1 rounded-md bg-white/90 px-2 text-xs text-black outline-none"
+              />
+              <datalist id="demo-emails">
+                {DEMO_EMAILS.map((demo) => (
+                  <option key={demo} value={demo} />
+                ))}
+              </datalist>
+            </div>
+          )}
+          {aiConfigured && (
+            <div className="flex items-center gap-3 bg-white/10 px-4 py-2">
+              <div className="flex-1 text-sm">
+                <span className="font-semibold">Use tools</span>
+                <span className="ml-2 text-xs text-white/70">
+                  {useTools ? "Checks every answer" : "Model guesses alone"}
+                </span>
+              </div>
+              <Switch
+                aria-label="Use tools"
+                checked={useTools}
+                onCheckedChange={setUseTools}
+              />
+            </div>
+          )}
+        </header>
+
+        {aiConfigured ? (
+          <>
+            <div
+              ref={body}
+              className="bg-secondary flex-1 space-y-6 overflow-y-auto px-4 py-5"
+            >
+              {turns.map((turn, i) =>
+                turn.notice ? (
+                  <div
+                    key={i}
+                    data-testid="refund-notice"
+                    className="bg-card ml-2 rounded-2xl rounded-tl-sm border p-4 text-sm shadow-xs"
+                  >
+                    <p className="text-primary mb-1 text-xs font-bold">
+                      {AGENT_LABELS.refund}
+                    </p>
+                    {turn.progress.reply}
+                  </div>
+                ) : (
                   <div key={i} className="space-y-4">
                     <p className="bg-primary text-primary-foreground ml-auto w-fit max-w-[85%] rounded-2xl rounded-br-sm px-4 py-2">
                       {turn.question}
                     </p>
                     <Answer progress={turn.progress} useTools={useTools} />
                   </div>
-                ))}
-                {!busy && (
-                  <div className="space-y-2">
-                    {turns.length === 0 && (
-                      <p className="text-muted-foreground text-sm">
-                        Hi, I&apos;m Copper! Ask me about prices, totals or
-                        stock. Try one of these:
-                      </p>
-                    )}
-                    {STARTERS.map((starter) => (
-                      <button
-                        key={starter}
-                        type="button"
-                        onClick={() => send(starter)}
-                        className="bg-background hover:border-primary block w-full rounded-xl border px-3 py-2 text-left text-sm transition-colors"
-                      >
-                        {starter}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <form
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  send(draft);
-                }}
-                className="bg-background flex items-center gap-2 border-t p-3"
-              >
-                <input
-                  aria-label="Your question"
-                  value={draft}
-                  onChange={(event) => setDraft(event.target.value)}
-                  placeholder="Ask about prices or stock…"
-                  className="bg-background focus-visible:ring-ring h-10 flex-1 rounded-full border px-4 text-sm outline-none focus-visible:ring-2"
-                />
-                <Button
-                  type="submit"
-                  size="icon"
-                  aria-label="Send"
-                  disabled={busy || !draft.trim()}
-                  className="size-10 rounded-full"
-                >
-                  <ArrowUpIcon />
-                </Button>
-              </form>
-            </>
-          ) : (
-            <div className="bg-secondary flex-1 overflow-y-auto px-4">
-              <SetupRequired service="ai" />
+                ),
+              )}
+              {!busy && (
+                <div className="space-y-2">
+                  {turns.length === 0 && (
+                    <p className="text-muted-foreground text-sm">
+                      Hi, I&apos;m Copper! Ask me about prices, totals or stock.
+                      Try one of these:
+                    </p>
+                  )}
+                  {STARTERS.map((starter) => (
+                    <button
+                      key={starter}
+                      type="button"
+                      onClick={() => send(starter)}
+                      className="bg-background hover:border-primary block w-full rounded-xl border px-3 py-2 text-left text-sm transition-colors"
+                    >
+                      {starter}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
-        </SheetContent>
-      </Sheet>
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                send(draft);
+              }}
+              className="bg-background flex items-center gap-2 border-t p-3"
+            >
+              <input
+                aria-label="Your question"
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                placeholder="Ask about prices or stock…"
+                className="bg-background focus-visible:ring-ring h-10 flex-1 rounded-full border px-4 text-sm outline-none focus-visible:ring-2"
+              />
+              <Button
+                type="submit"
+                size="icon"
+                aria-label="Send"
+                disabled={busy || !draft.trim()}
+                className="size-10 rounded-full"
+              >
+                <ArrowUpIcon />
+              </Button>
+            </form>
+          </>
+        ) : (
+          <div className="bg-secondary flex-1 overflow-y-auto px-4">
+            <SetupRequired service="ai" />
+          </div>
+        )}
+      </Shell>
     </>
+  );
+}
+
+/** The chat's frame: a slide-over sheet, or a column docked on the page. */
+function Shell({
+  docked,
+  open,
+  onOpenChange,
+  children,
+}: {
+  docked: boolean;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  children: ReactNode;
+}) {
+  if (docked)
+    return (
+      <div data-testid="ask-copper" className="flex h-full min-h-0 flex-col">
+        {children}
+      </div>
+    );
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent
+        data-testid="ask-copper"
+        side="right"
+        showCloseButton={false}
+        className="gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-md"
+      >
+        {children}
+      </SheetContent>
+    </Sheet>
   );
 }
 

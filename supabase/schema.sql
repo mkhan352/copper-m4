@@ -52,3 +52,9 @@ alter table customers enable row level security;
 alter table orders enable row level security;
 alter table inventory enable row level security;
 alter table refund_requests enable row level security;
+
+create table if not exists settings (
+  key text primary key,
+  value text not null
+);
+alter table settings enable row level security;

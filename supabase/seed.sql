@@ -1,8 +1,17 @@
--- Demo data for Copper M4 (same as lib/copper/refunds/seed.ts). Safe to re-run.
+-- Demo data for Copper M4 (same as lib/copper/refunds/seed.ts). Safe to re-run:
+-- it also resets the auto-refund limit to $100.
+create table if not exists settings (
+  key text primary key,
+  value text not null
+);
+alter table settings enable row level security;
+
 delete from refund_requests;
 delete from orders;
 delete from customers;
 delete from inventory;
+delete from settings;
+insert into settings (key, value) values ('auto_refund_limit_usd', '100');
 insert into customers (email, name) values
   ('ava@example.com','Ava'),('ben@example.com','Ben'),('cara@example.com','Cara'),
   ('dan@example.com','Dan'),('eve@example.com','Eve'),('finn@example.com','Finn');
@@ -19,6 +28,4 @@ insert into orders (id, customer_email, kind, product, color, sku, billing, amou
   ('ORD-1003','cara@example.com','plan','Copper Plus',null,null,'annual',79, now() - interval '5 days','none'),
   ('ORD-1004','dan@example.com','plan','Copper Plus',null,null,'annual',79, now() - interval '40 days','none'),
   ('ORD-1005','eve@example.com','plan','Copper Plus',null,null,'monthly',7.99, now() - interval '20 days','none'),
-  ('ORD-1006','finn@example.com','device','Copper Home','Night Sky','CH-NSK',null,149, now() - interval '10 days','pending');
-insert into refund_requests (id, order_id, customer_email, kind, product, sku, reason, agent_summary, amount_usd, rule_applied, recommendation, status, created_at) values
-  ('REQ-1000','ORD-1006','finn@example.com','device','Copper Home','CH-NSK','The device is too big for my desk.','Device bought 10 days ago, inside the 30-day window.',149,'Devices: 30-day return window','approve','pending', now() - interval '2 days');
+  ('ORD-1006','finn@example.com','device','Copper Home','Night Sky','CH-NSK',null,149, now() - interval '10 days','none');

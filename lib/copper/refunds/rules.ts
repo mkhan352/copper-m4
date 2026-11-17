@@ -8,7 +8,10 @@ export const ANNUAL_WINDOW_DAYS = 14;
 /** Refunds below this many dollars are approved by the agent on the spot. */
 export const DEFAULT_AUTO_REFUND_LIMIT_USD = 100;
 
-/** The auto-refund limit: AUTO_REFUND_LIMIT_USD if set, else $100. */
+/**
+ * The starting limit: AUTO_REFUND_LIMIT_USD if set, else $100. The limit an
+ * admin sets in the Refund Console (lib/copper/refunds/settings.ts) wins.
+ */
 export function autoRefundLimitUsd(): number {
   const value = Number(process.env.AUTO_REFUND_LIMIT_USD);
   return process.env.AUTO_REFUND_LIMIT_USD && value >= 0
@@ -17,8 +20,11 @@ export function autoRefundLimitUsd(): number {
 }
 
 /** True when an eligible refund of this size needs no admin approval. */
-export function isAutoApproved(refundUsd: number): boolean {
-  return refundUsd > 0 && refundUsd < autoRefundLimitUsd();
+export function isAutoApproved(
+  refundUsd: number,
+  limitUsd = autoRefundLimitUsd(),
+): boolean {
+  return refundUsd > 0 && refundUsd < limitUsd;
 }
 
 export type RefundDecision = {
@@ -42,12 +48,17 @@ export function daysSince(purchasedAt: string, now = Date.now()): number {
 
 type Verdict = Omit<RefundDecision, "autoApproved" | "autoRefundLimitUsd">;
 
-export function evaluateRefund(order: Order, now = Date.now()): RefundDecision {
+export function evaluateRefund(
+  order: Order,
+  now = Date.now(),
+  limitUsd = autoRefundLimitUsd(),
+): RefundDecision {
   const verdict = evaluateRules(order, now);
   return {
     ...verdict,
-    autoApproved: verdict.eligible && isAutoApproved(verdict.refundUsd),
-    autoRefundLimitUsd: autoRefundLimitUsd(),
+    autoApproved:
+      verdict.eligible && isAutoApproved(verdict.refundUsd, limitUsd),
+    autoRefundLimitUsd: limitUsd,
   };
 }
 

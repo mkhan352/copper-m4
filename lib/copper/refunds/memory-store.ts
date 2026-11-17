@@ -13,6 +13,7 @@ export function createMemoryStore(now = Date.now()): Store {
   const orders = seedOrders(now);
   const requests = seedRequests(now);
   const inventory = seedInventory();
+  const settings = new Map<string, string>();
   let counter = 1000 + requests.length;
 
   return {
@@ -23,6 +24,15 @@ export function createMemoryStore(now = Date.now()): Store {
       return structuredClone(
         orders.filter((o) => o.customer_email === email.toLowerCase()),
       );
+    },
+    async listAllOrders() {
+      return structuredClone(orders);
+    },
+    async getSetting(key) {
+      return settings.get(key) ?? null;
+    },
+    async setSetting(key, value) {
+      settings.set(key, value);
     },
     async getOrder(id) {
       const order = orders.find((o) => o.id === id);

@@ -92,7 +92,7 @@ const ORDERS: Seed[] = [
     billing: null,
     amount_usd: 149,
     daysAgo: 10,
-    refund_status: "pending",
+    refund_status: "none",
   },
 ];
 
@@ -107,25 +107,8 @@ export function seedInventory(): InventoryRow[] {
   return structuredClone(inventory.inventory);
 }
 
-/** Finn's order is already waiting for review, so he can't ask twice. */
+/** No refund requests to start with: customers make them in the chat. */
 export function seedRequests(now = Date.now()): RefundRequest[] {
-  return [
-    {
-      id: "REQ-1000",
-      order_id: "ORD-1006",
-      customer_email: "finn@example.com",
-      kind: "device",
-      product: "Copper Home",
-      sku: "CH-NSK",
-      reason: "The device is too big for my desk.",
-      agent_summary: "Device bought 10 days ago, inside the 30-day window.",
-      amount_usd: 149,
-      rule_applied: "Devices: 30-day return window",
-      recommendation: "approve",
-      status: "pending",
-      admin_note: null,
-      created_at: new Date(now - 2 * DAY).toISOString(),
-      decided_at: null,
-    },
-  ];
+  void now;
+  return [];
 }

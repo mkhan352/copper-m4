@@ -29,6 +29,23 @@ export function createSupabaseStore(url: string, key: string): Store {
           .order("purchased_at", { ascending: false }),
       ) as Order[];
     },
+    async listAllOrders() {
+      return ok(
+        await db.from("orders").select("*").order("id", { ascending: true }),
+      ) as Order[];
+    },
+    async getSetting(key) {
+      const { data } = await db
+        .from("settings")
+        .select("value")
+        .eq("key", key)
+        .maybeSingle();
+      return (data?.value as string | undefined) ?? null;
+    },
+    async setSetting(key, value) {
+      const { error } = await db.from("settings").upsert({ key, value });
+      if (error) throw new Error("The database request failed.");
+    },
     async getOrder(id) {
       const { data } = await db
         .from("orders")

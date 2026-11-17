@@ -7,6 +7,7 @@ import { tool } from "ai";
 import { z } from "zod";
 import { decideRefund } from "@/lib/copper/admin/decide";
 import { daysSince, evaluateRefund } from "@/lib/copper/refunds/rules";
+import { getAutoRefundLimit } from "@/lib/copper/refunds/settings";
 import { getStore } from "@/lib/copper/refunds/store";
 import type { Order } from "@/lib/copper/refunds/types";
 
@@ -91,7 +92,10 @@ export async function getRefundRules(
   try {
     const order = await ownOrder(email, orderId);
     if (!order) return { status: "not_found" };
-    return { status: "ok", ...evaluateRefund(order) };
+    return {
+      status: "ok",
+      ...evaluateRefund(order, Date.now(), await getAutoRefundLimit()),
+    };
   } catch {
     return UNAVAILABLE;
   }
@@ -107,7 +111,11 @@ export async function requestRefund(
     const order = await ownOrder(email, orderId);
     if (!order) return { status: "not_found" };
     // Checked again here, so no wording from the model can skip the rules.
-    const decision = evaluateRefund(order);
+    const decision = evaluateRefund(
+      order,
+      Date.now(),
+      await getAutoRefundLimit(),
+    );
     if (!decision.eligible)
       return { status: "not_eligible", reason: decision.reason };
     const request = await getStore().createRequest({

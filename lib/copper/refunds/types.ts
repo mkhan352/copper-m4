@@ -56,6 +56,11 @@ export type Store = {
   listCustomers(): Promise<{ email: string; name: string }[]>;
   listOrders(email: string): Promise<Order[]>;
   getOrder(id: string): Promise<Order | null>;
+  /** Every customer's orders, for the Refund Console. */
+  listAllOrders(): Promise<Order[]>;
+  /** A saved setting (like the auto-refund limit), or null if never set. */
+  getSetting(key: string): Promise<string | null>;
+  setSetting(key: string, value: string): Promise<void>;
   /** Saves the request as pending and marks its order pending. */
   createRequest(input: NewRefundRequest): Promise<RefundRequest>;
   listRequests(): Promise<RefundRequest[]>;
