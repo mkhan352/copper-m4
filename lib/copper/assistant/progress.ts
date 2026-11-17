@@ -54,7 +54,7 @@ export const TOOL_LABELS: Record<string, string> = {
   hand_to_copper: "Handing back to Copper Support",
   get_purchase_history: "Looking up your orders",
   get_refund_rules: "Checking the refund rules",
-  request_refund: "Sending the request to an admin",
+  request_refund: "Filing the refund request",
 };
 
 /** The tools each agent is offered, in the order the panel lists them. */
