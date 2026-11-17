@@ -644,6 +644,12 @@ function ToolOutput({ name, output }: { name: string; output: any }) {
         >
           {output.eligible ? "Eligible" : "Not eligible"}
         </Pill>
+        {output.autoApproved && (
+          <p>
+            Under the {formatUsd(output.autoRefundLimitUsd)} auto-refund limit:
+            no admin approval needed.
+          </p>
+        )}
         <p className="font-medium">{output.rule}</p>
         <p className="text-muted-foreground">{output.reason}</p>
       </div>
@@ -654,6 +660,14 @@ function ToolOutput({ name, output }: { name: string; output: any }) {
         Request <span className="font-mono font-bold">{output.requestId}</span>{" "}
         for {formatUsd(output.refundUsd)} is{" "}
         <strong>pending admin review</strong>.
+      </p>
+    );
+  if (name === "request_refund" && output?.status === "auto_approved")
+    return (
+      <p className="text-xs" data-testid="refund-auto-approved">
+        Request <span className="font-mono font-bold">{output.requestId}</span>{" "}
+        for {formatUsd(output.refundUsd)} was{" "}
+        <strong>approved automatically</strong> (under the auto-refund limit).
       </p>
     );
   if (name === "request_refund" && output?.status === "not_eligible")

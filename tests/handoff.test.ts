@@ -148,7 +148,7 @@ describe("Copper -> Refund specialist -> Copper", () => {
     const { COPPER_INSTRUCTIONS: copper } =
       await import("@/lib/copper/assistant/instructions");
     expect(copper).toContain("hand_to_refund");
-    expect(refund).toMatch(/NEVER say a refund is approved/);
+    expect(refund).toMatch(/NEVER say it is approved/);
     expect(refund).toContain("get_refund_rules");
     expect(refund).toContain("hand_to_copper");
   });

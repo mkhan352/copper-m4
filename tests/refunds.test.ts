@@ -1,12 +1,16 @@
 // @vitest-environment node
 // Refund rules, the Refund agent's tools and the admin decision. Everything
 // runs on the in-memory demo store, so it costs nothing and needs no database.
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { decideRefund } from "@/lib/copper/admin/decide";
 import { checkPassword } from "@/lib/copper/admin/session";
 import { readInventory } from "@/lib/copper/inventory";
 import { createMemoryStore } from "@/lib/copper/refunds/memory-store";
-import { evaluateRefund } from "@/lib/copper/refunds/rules";
+import {
+  autoRefundLimitUsd,
+  evaluateRefund,
+  isAutoApproved,
+} from "@/lib/copper/refunds/rules";
 import { getStore, resetStore } from "@/lib/copper/refunds/store";
 import {
   getPurchaseHistory,
@@ -33,7 +37,117 @@ const order = (over: Partial<Order>): Order => ({
 });
 const ago = (days: number) => new Date(NOW - days * DAY).toISOString();
 
-beforeEach(() => resetStore(createMemoryStore()));
+// The older tests below check the "waits for an admin" path, so they run with
+// the auto-refund limit at $0. The auto-refund tests set their own limit.
+beforeEach(() => {
+  process.env.AUTO_REFUND_LIMIT_USD = "0";
+  resetStore(createMemoryStore());
+});
+afterEach(() => {
+  delete process.env.AUTO_REFUND_LIMIT_USD;
+});
+
+describe("auto-refund limit", () => {
+  const units = async (sku: string) =>
+    (await readInventory())!.find((r) => r.sku === sku)!.units_in_stock;
+
+  it("defaults to $100 and can be set with AUTO_REFUND_LIMIT_USD", () => {
+    delete process.env.AUTO_REFUND_LIMIT_USD;
+    expect(autoRefundLimitUsd()).toBe(100);
+    process.env.AUTO_REFUND_LIMIT_USD = "150";
+    expect(autoRefundLimitUsd()).toBe(150);
+    process.env.AUTO_REFUND_LIMIT_USD = "nonsense";
+    expect(autoRefundLimitUsd()).toBe(100);
+  });
+
+  it("refunds strictly below the limit are auto-approved, at or above are not", () => {
+    process.env.AUTO_REFUND_LIMIT_USD = "100";
+    expect(isAutoApproved(79)).toBe(true);
+    expect(isAutoApproved(99.99)).toBe(true);
+    expect(isAutoApproved(100)).toBe(false);
+    expect(isAutoApproved(149)).toBe(false);
+  });
+
+  it("get_refund_rules tells the agent whether it is auto-approved", async () => {
+    process.env.AUTO_REFUND_LIMIT_USD = "100";
+    expect(await getRefundRules("cara@example.com", "ORD-1003")).toMatchObject({
+      eligible: true,
+      autoApproved: true,
+      autoRefundLimitUsd: 100,
+    });
+    expect(await getRefundRules("ava@example.com", "ORD-1001")).toMatchObject({
+      eligible: true,
+      autoApproved: false,
+    });
+    expect(await getRefundRules("ben@example.com", "ORD-1002")).toMatchObject({
+      eligible: false,
+      autoApproved: false,
+    });
+  });
+
+  it("a small refund is approved on the spot, with no admin", async () => {
+    process.env.AUTO_REFUND_LIMIT_USD = "100";
+    const result = await requestRefund(
+      "cara@example.com",
+      "ORD-1003",
+      "Not for me",
+    );
+    expect(result).toMatchObject({
+      status: "auto_approved",
+      refundUsd: 79,
+      restocked: false,
+    });
+    expect((await getStore().listRequests())[0]).toMatchObject({
+      order_id: "ORD-1003",
+      status: "approved",
+    });
+    expect((await getStore().getOrder("ORD-1003"))?.refund_status).toBe(
+      "refunded",
+    );
+  });
+
+  it("a small device refund restocks the device automatically", async () => {
+    process.env.AUTO_REFUND_LIMIT_USD = "200";
+    const before = await units("CH-POL");
+    const result = await requestRefund(
+      "ava@example.com",
+      "ORD-1001",
+      "Too big",
+    );
+    expect(result).toMatchObject({ status: "auto_approved", restocked: true });
+    expect(await units("CH-POL")).toBe(before + 1);
+  });
+
+  it("a refund over the limit still waits for an admin and leaves stock alone", async () => {
+    process.env.AUTO_REFUND_LIMIT_USD = "100";
+    const before = await units("CH-POL");
+    const result = await requestRefund(
+      "ava@example.com",
+      "ORD-1001",
+      "Too big",
+    );
+    expect(result).toMatchObject({ status: "created" });
+    expect((await getStore().listRequests())[0].status).toBe("pending");
+    expect(await units("CH-POL")).toBe(before);
+  });
+
+  it("an ineligible order is never auto-approved, however small", async () => {
+    process.env.AUTO_REFUND_LIMIT_USD = "1000";
+    expect(
+      await requestRefund("eve@example.com", "ORD-1005", "x"),
+    ).toMatchObject({
+      status: "not_eligible",
+    });
+  });
+
+  it("the Refund agent's instructions cover both outcomes", async () => {
+    const { REFUND_INSTRUCTIONS } =
+      await import("@/lib/copper/refunds/instructions");
+    expect(REFUND_INSTRUCTIONS).toContain("auto_approved");
+    expect(REFUND_INSTRUCTIONS).toContain('"created"');
+    expect(REFUND_INSTRUCTIONS).toMatch(/NEVER say it is approved/);
+  });
+});
 
 describe("refund rules", () => {
   it("devices: day 30 is inside the window, day 31 is not", () => {

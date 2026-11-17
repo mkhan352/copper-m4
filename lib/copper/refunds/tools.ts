@@ -5,6 +5,7 @@
 // a refund (lib/copper/refunds/availability.ts).
 import { tool } from "ai";
 import { z } from "zod";
+import { decideRefund } from "@/lib/copper/admin/decide";
 import { daysSince, evaluateRefund } from "@/lib/copper/refunds/rules";
 import { getStore } from "@/lib/copper/refunds/store";
 import type { Order } from "@/lib/copper/refunds/types";
@@ -28,6 +29,12 @@ export type PurchaseHistory =
 
 export type RefundRequestResult =
   | { status: "created"; requestId: string; refundUsd: number }
+  | {
+      status: "auto_approved";
+      requestId: string;
+      refundUsd: number;
+      restocked: boolean;
+    }
   | { status: "not_eligible"; reason: string }
   | { status: "not_found" }
   | { status: "need_email" }
@@ -115,6 +122,23 @@ export async function requestRefund(
       rule_applied: decision.rule,
       recommendation: "approve",
     });
+    // Under the auto-refund limit the agent finishes the job itself: the
+    // request is approved right away (and a returned device goes back in
+    // stock). The server decides this from the amount, not the model.
+    if (decision.autoApproved) {
+      const approved = await decideRefund(
+        request.id,
+        "approved",
+        `Auto-approved: under the $${decision.autoRefundLimitUsd} limit`,
+      );
+      if (approved.status === "approved")
+        return {
+          status: "auto_approved",
+          requestId: request.id,
+          refundUsd: decision.refundUsd,
+          restocked: approved.restocked,
+        };
+    }
     return {
       status: "created",
       requestId: request.id,
@@ -143,7 +167,7 @@ export function makeRefundTools(email: string | undefined) {
     }),
     request_refund: tool({
       description:
-        "Files a refund request for an eligible order. It goes to a human admin to approve or reject; it never approves anything itself. Only call it after get_refund_rules said eligible and the customer wants the refund.",
+        "Files a refund request for an eligible order. Under the auto-refund limit it is approved on the spot; above it, it waits for a human admin to approve or reject. The result says which. Only call it after get_refund_rules said eligible and the customer wants the refund.",
       inputSchema: z.object({
         orderId: z.string().describe("The order id, like ORD-1001"),
         reason: z

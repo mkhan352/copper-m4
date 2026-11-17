@@ -145,6 +145,7 @@ Full plan: `docs/copper-m4-spec.md`.
 | Refund rules (devices 30 days, annual Plus 14 days, monthly none) as plain code | `lib/copper/refunds/rules.ts` |
 | `update_availability`: puts a returned device back in stock. Runs only when an admin approves, never from the chat | `lib/copper/refunds/availability.ts`, `lib/copper/admin/decide.ts` |
 | Orders, refund requests and stock: Supabase when `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are set, otherwise an in-memory demo store | `lib/copper/refunds/store.ts` and friends, `supabase/schema.sql`, `supabase/seed.sql` |
+| Auto-refund limit: an eligible refund strictly below `AUTO_REFUND_LIMIT_USD` (default $100) is approved by `request_refund` on the spot (device restocked); at or above it waits for an admin. The server decides from the amount, never the model | `lib/copper/refunds/rules.ts`, `lib/copper/refunds/tools.ts` |
 | Admin page `/admin` behind one password (`ADMIN_PASSWORD`), signed httpOnly cookie | `app/admin`, `lib/copper/admin/session.ts` |
 
 Demo customers (type the email in the chat panel): ava (device, eligible), ben (device, too late), cara (annual, eligible), dan (annual, too late), eve (monthly, no refund), finn (already pending).
