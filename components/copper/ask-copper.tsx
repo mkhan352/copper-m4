@@ -29,9 +29,12 @@ import { Switch } from "@/components/ui/switch";
 import { readLive } from "@/lib/ai/live";
 import { askCopper, type ChatMessage } from "@/lib/copper/assistant/ask";
 import {
+  AGENT_LABELS,
+  type AgentId,
   type Progress,
   type ToolStep,
   TOOL_LABELS,
+  TOOLS_BY_AGENT,
 } from "@/lib/copper/assistant/progress";
 import { formatUsd, getPlans, getProducts } from "@/lib/copper/catalog";
 import { cn } from "@/lib/utils";
@@ -40,6 +43,15 @@ const STARTERS = [
   "How much is Copper Home with Copper Plus, paid yearly, for 2 years?",
   "Is Copper Notes in Night Sky in stock?",
   "Is Copper Plus cheaper monthly or yearly?",
+];
+
+const DEMO_EMAILS = [
+  "ava@example.com",
+  "ben@example.com",
+  "cara@example.com",
+  "dan@example.com",
+  "eve@example.com",
+  "finn@example.com",
 ];
 
 type Turn = { question: string; progress: Progress };
@@ -52,6 +64,7 @@ export function AskCopper({ aiConfigured }: { aiConfigured: boolean }) {
   const [useTools, setUseTools] = useState(true);
   const [chats, setChats] = useState<Chats>({ tools: [], noTools: [] });
   const [draft, setDraft] = useState("");
+  const [email, setEmail] = useState("");
   const body = useRef<HTMLDivElement>(null);
 
   const key = useTools ? "tools" : "noTools";
@@ -104,9 +117,15 @@ export function AskCopper({ aiConfigured }: { aiConfigured: boolean }) {
       [chat]: [...all[chat], { question, progress: WORKING }],
     }));
     try {
+      // Whoever answered last keeps the conversation until they hand it over.
+      const activeAgent: AgentId =
+        turns.findLast((turn) => turn.progress.agent)?.progress.agent ??
+        "copper";
       const { progress } = await askCopper({
         messages,
         useTools: chat === "tools",
+        activeAgent,
+        customerEmail: email,
       });
       for await (const update of readLive(progress)) setProgress(update);
     } catch {
@@ -162,6 +181,30 @@ export function AskCopper({ aiConfigured }: { aiConfigured: boolean }) {
                 </Button>
               </SheetClose>
             </div>
+            {aiConfigured && useTools && (
+              <div className="flex items-center gap-3 bg-white/10 px-4 py-2">
+                <label
+                  htmlFor="customer-email"
+                  className="text-xs font-semibold whitespace-nowrap"
+                >
+                  Your order email
+                </label>
+                <input
+                  id="customer-email"
+                  list="demo-emails"
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder="ava@example.com"
+                  className="h-8 min-w-0 flex-1 rounded-md bg-white/90 px-2 text-xs text-black outline-none"
+                />
+                <datalist id="demo-emails">
+                  {DEMO_EMAILS.map((demo) => (
+                    <option key={demo} value={demo} />
+                  ))}
+                </datalist>
+              </div>
+            )}
             {aiConfigured && (
               <div className="flex items-center gap-3 bg-white/10 px-4 py-2">
                 <div className="flex-1 text-sm">
@@ -280,11 +323,13 @@ function Answer({
           node={<WrenchIcon className="size-3" />}
           nodeClass="bg-muted-foreground"
           label={
-            useTools ? "Tools Copper can use" : "Tools given to Copper: none"
+            useTools
+              ? `Tools ${AGENT_LABELS[progress.agent ?? "copper"]} can use`
+              : "Tools given to Copper: none"
           }
         >
           <div className="flex flex-wrap gap-1.5">
-            {Object.keys(TOOL_LABELS).map((name) => (
+            {TOOLS_BY_AGENT[progress.agent ?? "copper"].map((name) => (
               <span
                 key={name}
                 className={cn(
@@ -367,7 +412,12 @@ function Answer({
 
       {(reply || !working) && (
         <div className="bg-card ml-2 rounded-2xl rounded-tl-sm border p-4 shadow-xs">
-          <p className="text-primary mb-1 text-xs font-bold">Copper</p>
+          <p
+            data-testid="agent-badge"
+            className="text-primary mb-1 text-xs font-bold"
+          >
+            {progress.agent === "refund" ? AGENT_LABELS.refund : "Copper"}
+          </p>
           {!useTools && (
             <div className="border-chart-3 bg-chart-3/10 mb-3 rounded-lg border p-3 text-xs">
               <p className="flex items-center gap-1.5 font-bold">
@@ -552,6 +602,62 @@ function ToolInput({ name, input }: { name: string; input: unknown }) {
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- tool outputs arrive untyped from the stream */
 function ToolOutput({ name, output }: { name: string; output: any }) {
+  if (
+    (name === "hand_to_refund" || name === "hand_to_copper") &&
+    output?.handoff
+  )
+    return (
+      <p className="text-xs">
+        Now talking to{" "}
+        <strong>{AGENT_LABELS[output.handoff as AgentId]}</strong>
+        {output.summary ? `: ${output.summary}` : ""}
+      </p>
+    );
+  if (name === "get_purchase_history" && output?.status === "need_email")
+    return <p className="text-xs">Needs the order email from the box above.</p>;
+  if (name === "get_purchase_history" && output?.orders)
+    return (
+      <div className="space-y-1 text-xs" data-testid="purchase-history">
+        {output.orders.length === 0 && <p>No orders found.</p>}
+        {output.orders.map((o: any) => (
+          <div key={o.orderId} className="flex justify-between gap-2 py-0.5">
+            <span>
+              <span className="font-mono">{o.orderId}</span> {o.product}
+              {o.color ? `, ${o.color}` : o.billing ? `, ${o.billing}` : ""}
+              <span className="text-muted-foreground">
+                {" "}
+                · {o.daysSincePurchase} days ago
+              </span>
+            </span>
+            <span className="font-mono">{formatUsd(o.amountUsd)}</span>
+          </div>
+        ))}
+      </div>
+    );
+  if (name === "get_refund_rules" && output?.status === "ok")
+    return (
+      <div className="space-y-1 text-xs" data-testid="refund-rules">
+        <Pill
+          className={
+            output.eligible ? "bg-accent text-white" : "bg-chart-3 text-white"
+          }
+        >
+          {output.eligible ? "Eligible" : "Not eligible"}
+        </Pill>
+        <p className="font-medium">{output.rule}</p>
+        <p className="text-muted-foreground">{output.reason}</p>
+      </div>
+    );
+  if (name === "request_refund" && output?.status === "created")
+    return (
+      <p className="text-xs" data-testid="refund-created">
+        Request <span className="font-mono font-bold">{output.requestId}</span>{" "}
+        for {formatUsd(output.refundUsd)} is{" "}
+        <strong>pending admin review</strong>.
+      </p>
+    );
+  if (name === "request_refund" && output?.status === "not_eligible")
+    return <p className="text-xs">Not filed: {output.reason}</p>;
   if (name === "calculate_cost" && output?.lines)
     return (
       <div className="text-xs">

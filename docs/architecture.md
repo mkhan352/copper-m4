@@ -133,3 +133,19 @@ customer's question can later be matched to the right passages.
 **Decisions and trade-offs:** Always 5 results, because a fixed number is simple for students to reason about, even though sometimes fewer are relevant. The similarity score is shown so students can see when matches are weak (a short query like "C-47" scores about 0.58 for its right answer). Search is exact and in memory, which is fast at 99 passages but would need a vector database at much larger sizes.
 
 **Risks and open questions:** Copper can still misread a passage, so it cites document and page for the customer to check. The `#page=N` link works in most browsers' built-in PDF viewers but not every one.
+
+## Module 4: the Refund agent and the admin page
+
+Full plan: `docs/copper-m4-spec.md`.
+
+| Piece | Where |
+| --- | --- |
+| Two agents in one chat: Copper Support and the Refund specialist. `hand_to_refund` and `hand_to_copper` switch who is active; the panel sends the active agent back with each question | `lib/copper/assistant/ask.ts`, `lib/copper/assistant/progress.ts` |
+| Refund agent tools: `get_purchase_history`, `get_refund_rules`, `request_refund`, `hand_to_copper`. The customer's email is fixed by the server, never chosen by the model | `lib/copper/refunds/tools.ts` |
+| Refund rules (devices 30 days, annual Plus 14 days, monthly none) as plain code | `lib/copper/refunds/rules.ts` |
+| `update_availability`: puts a returned device back in stock. Runs only when an admin approves, never from the chat | `lib/copper/refunds/availability.ts`, `lib/copper/admin/decide.ts` |
+| Orders, refund requests and stock: Supabase when `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are set, otherwise an in-memory demo store | `lib/copper/refunds/store.ts` and friends, `supabase/schema.sql`, `supabase/seed.sql` |
+| Admin page `/admin` behind one password (`ADMIN_PASSWORD`), signed httpOnly cookie | `app/admin`, `lib/copper/admin/session.ts` |
+
+Demo customers (type the email in the chat panel): ava (device, eligible), ben (device, too late), cara (annual, eligible), dan (annual, too late), eve (monthly, no refund), finn (already pending).
+Settings: `GOOGLE_GENERATIVE_AI_API_KEY`, `ADMIN_PASSWORD`, optional `ADMIN_SESSION_SECRET`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.

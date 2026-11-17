@@ -312,6 +312,8 @@ describe("Part A: the Ask Copper chat widget", () => {
         },
       ],
       useTools: true,
+      activeAgent: "copper",
+      customerEmail: "",
     });
 
     // A follow-up in the same conversation carries the earlier turns.
@@ -336,6 +338,8 @@ describe("Part A: the Ask Copper chat widget", () => {
         },
       ],
       useTools: false,
+      activeAgent: "copper",
+      customerEmail: "",
     });
 
     // Switching back shows the tools-on conversation again.

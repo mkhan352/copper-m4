@@ -12,6 +12,7 @@ import {
 } from "@/lib/copper/catalog";
 import { readInventory } from "@/lib/copper/inventory";
 import { callEmbed } from "@/lib/ai/call";
+import type { Handoff } from "@/lib/copper/refunds/tools";
 import {
   closestPassages,
   DEFAULT_RESULTS,
@@ -230,6 +231,19 @@ export async function searchDocs(
 }
 
 export const copperTools = {
+  hand_to_refund: tool({
+    description:
+      "Hands the conversation to the refund specialist when the shopper wants a refund or return of something they bought.",
+    inputSchema: z.object({
+      summary: z
+        .string()
+        .describe("One sentence on what the shopper wants refunded and why"),
+    }),
+    execute: async ({ summary }): Promise<Handoff> => ({
+      handoff: "refund",
+      summary,
+    }),
+  }),
   search_docs: tool({
     description:
       "Searches Copper's customer documents (the Copper Home and Copper Notes user guides, the Terms and Conditions and the Copper Plus FAQ) and returns the 5 passages closest to the question, each with its document title, page number and a link to that page. Use it for setup, troubleshooting, error codes, warranty, refunds, privacy and other policy questions.",
