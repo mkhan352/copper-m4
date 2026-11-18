@@ -1,7 +1,7 @@
 # Copper M4: Refund Agent: Spec (updated to match what was built)
 
 Status: BUILT and deployed. Live: https://copper-m4-sage.vercel.app (Support page: `/support`, admin: `/admin`). Repo: https://github.com/mkhan352/copper-m4 (branch `main`).
-This file started as the build plan from the architecture sketch and now records what the app actually does, including later changes (auto-refund limit, Support page, decision notices).
+This file started as the build plan from the architecture sketch and now records what the app actually does, including later changes (auto-refund limit, Support page, decision notices, and refunds built into the main website).
 
 ## 1. Goal
 
@@ -14,7 +14,8 @@ A customer chats with Ask Copper. When they want money back, Copper hands the ch
 | Repo | `mkhan352/copper-m4`, a sibling folder of `copper-m3`, started as a copy of it (keeps Ask Copper, `search_docs`, PDFs, embeddings) |
 | Data | Supabase Postgres (orders, refund requests, stock, settings). Without Supabase settings the app falls back to an in-memory demo store that resets on restart |
 | Admin sign-in | `/admin` uses one password (`ADMIN_PASSWORD`), signed httpOnly cookie |
-| Support page | `/support` has the Refund Console and the chat docked on the right. The console is **open** (no password), for the class demo; `/admin` is the protected version |
+| Support page | `/support` is part of the main website (same header and footer). It has the Refund Console and the chat docked on the right. The console is **open** (no password), for the class demo; `/admin` is the protected version |
+| Main website | Refunds work everywhere: the header has Refunds and Support links, the home page has a Returns and refunds section, and the floating Ask Copper chat on the home page hands refunds to the Refund agent too |
 | Customer identity | The customer types a demo email in the chat panel. The server fixes the email for the tools, so the model can't read other customers' orders |
 | Auto-refund limit | Default **$100**, changeable in the Refund Console, saved in the `settings` table. A refund is automatic only if it is eligible and **strictly below** the limit |
 | `update_availability` | Adds one unit back to stock. Runs only after a **device** refund is approved, whether by the agent (under the limit) or an admin. It is not a tool the chat model can call |
@@ -96,6 +97,10 @@ Handoff design: one chat, one message list. The panel keeps the active agent (`c
   - Approved: "Good news: a Copper admin approved your refund REQ-xxxx ... The refund has been issued."
   - Rejected: "... a Copper admin reviewed it and did not approve it, so your ... was not refunded and your payment stays as it was."
 
+**On every page:** the chat remembers the refund requests it filed that are waiting. Every 4 seconds it asks the server (`lib/copper/refunds/updates.ts`, `refundUpdates(email, ids)`) whether a person decided them; only that customer's own requests come back. So a customer chatting on the home page hears about an Approve or Reject made on `/support` or `/admin`. Each decision is told once, even if the browser event and the server check both arrive.
+
+**Home page:** a Returns and refunds section (`#refunds`) shows the rules (devices 30 days, yearly Copper Plus 14 days, monthly none, read from `rules.ts`) with buttons "Ask Copper for a refund" (opens the chat) and "Go to Support". The chat has a starter "I'd like a refund on my order."
+
 **`/admin`** (password): the same job with extra detail (reason, rule applied, agent recommendation, admin note field) and a stock table. Approve also restocks a device. The refund payout is simulated everywhere.
 
 Deciding is safe:
@@ -122,9 +127,11 @@ Deciding is safe:
 
 ## 11. Tests (vitest, no real model calls)
 
-179 tests pass, plus lint, typecheck and the production build.
+183 tests pass, plus lint, typecheck and the production build.
 - `tests/refunds.test.ts`: every rule edge (days 30/31, 14/15, monthly, duplicate), the tools (own orders only, ineligible, duplicate, other customer, no email), admin decisions (restock only after approval and only for devices, reject keeps stock, decide once), the auto-refund limit (default, strictly-below, auto-approve with restock, over-limit waits, ineligible never auto), the saved limit overriding the default, and the console actions returning the notice text for approve and reject.
 - `tests/handoff.test.ts`: Copper to Refund agent and back with a mock model, tools and instructions swap per agent, the customer's email reaches the tools, `update_availability` is never offered, instructions say what each agent must do.
+- `tests/refunds.test.ts` also checks refund updates: only the customer's own requests, only once decided, for Approve and Reject.
+- `tests/home.test.tsx`: the Returns and refunds section links to the chat and `/support`; the header links to Support from any page.
 - `tests/ask-copper.test.tsx` and the rest of the Module 2 and 3 tests still pass.
 
 ## 12. Acceptance (checked on the live site)
@@ -135,6 +142,7 @@ Deciding is safe:
 4. Copper hands refund requests to the separate Refund agent, and the chat shows the handoff.
 5. The limit can be changed in the console and the next refund uses the new limit.
 6. Nobody can approve or change stock from the chat; ineligible orders are never refunded.
+7. A customer asking for a refund in the home page's chat gets the same Refund agent, and hears about the Approve or Reject without being on `/support`.
 
 ## 13. Known limits and out of scope
 

@@ -56,6 +56,8 @@
  * Text on Copper and Patina Teal is Night Sky (better contrast than white).
  */
 :root {
+  /* Height of the sticky site header; the Support page's docked chat sits under it. */
+  --header-h: 4rem;
   --background: #ffffff;
   --foreground: #1c2333;
   --card: #ffffff;

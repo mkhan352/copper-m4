@@ -2,6 +2,7 @@ import { AskCopper } from "@/components/copper/ask-copper";
 import { Hero } from "@/components/copper/landing/hero";
 import { PlusPricing } from "@/components/copper/landing/plus-pricing";
 import { PrivacySummary } from "@/components/copper/landing/privacy-summary";
+import { RefundsSection } from "@/components/copper/landing/refunds-section";
 import { ProductsSection } from "@/components/copper/landing/products-section";
 import { Showcase } from "@/components/copper/landing/showcase";
 import { SiteFooter } from "@/components/copper/site-footer";
@@ -20,6 +21,7 @@ export default function Home() {
         <Showcase products={products} />
         <PlusPricing plans={getPlans()} />
         <PrivacySummary privacy={getPrivacySummary()} />
+        <RefundsSection />
       </main>
       <SiteFooter />
       <AskCopper aiConfigured={isAiConfigured()} />

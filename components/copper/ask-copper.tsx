@@ -42,12 +42,14 @@ import {
   REFUND_DECIDED_EVENT,
   type RefundDecidedDetail,
 } from "@/lib/copper/refunds/events";
+import { refundUpdates } from "@/lib/copper/refunds/updates";
 import { cn } from "@/lib/utils";
 
 const STARTERS = [
   "How much is Copper Home with Copper Plus, paid yearly, for 2 years?",
   "Is Copper Notes in Night Sky in stock?",
   "Is Copper Plus cheaper monthly or yearly?",
+  "I'd like a refund on my order.",
 ];
 
 const DEMO_EMAILS = [
@@ -60,7 +62,13 @@ const DEMO_EMAILS = [
 ];
 
 /** A `notice` is a message from the app (like "your refund was approved"). */
-type Turn = { question: string; progress: Progress; notice?: boolean };
+type Turn = {
+  question: string;
+  progress: Progress;
+  notice?: boolean;
+  /** For a notice: the refund request it is about. */
+  requestId?: string;
+};
 type Chats = { tools: Turn[]; noTools: Turn[] };
 
 const WORKING: Progress = { steps: [], reply: "", status: "working" };
@@ -110,26 +118,67 @@ export function AskCopper({
   useEffect(() => {
     emailNow.current = email;
   }, [email]);
+  // Each decision is told once, whether it arrives as a browser event from the
+  // console on this page or from checking the server (any page, or /admin).
+  const told = useRef(new Set<string>());
+  const tell = useRef((detail: RefundDecidedDetail) => {
+    if (told.current.has(detail.requestId)) return;
+    told.current.add(detail.requestId);
+    const notice: Turn = {
+      question: "",
+      notice: true,
+      requestId: detail.requestId,
+      progress: {
+        agent: "refund",
+        steps: [],
+        reply: decisionNotice(detail),
+        status: "done",
+      },
+    };
+    setChats((all) => ({ ...all, tools: [...all.tools, notice] }));
+  });
   useEffect(() => {
     const onDecided = (event: Event) => {
       const detail = (event as CustomEvent<RefundDecidedDetail>).detail;
       if (detail.email.toLowerCase() !== emailNow.current.trim().toLowerCase())
         return;
-      const notice: Turn = {
-        question: "",
-        notice: true,
-        progress: {
-          agent: "refund",
-          steps: [],
-          reply: decisionNotice(detail),
-          status: "done",
-        },
-      };
-      setChats((all) => ({ ...all, tools: [...all.tools, notice] }));
+      tell.current(detail);
     };
     window.addEventListener(REFUND_DECIDED_EVENT, onDecided);
     return () => window.removeEventListener(REFUND_DECIDED_EVENT, onDecided);
   }, []);
+
+  // Refund requests this chat filed that are still waiting for a person.
+  const toldIds = new Set(chats.tools.map((turn) => turn.requestId));
+  const waiting = chats.tools
+    .flatMap((turn) => turn.progress.steps)
+    .flatMap((step) =>
+      step.type === "tool" &&
+      step.name === "request_refund" &&
+      (step.output as { status?: string } | undefined)?.status === "created"
+        ? [String((step.output as { requestId: string }).requestId)]
+        : [],
+    )
+    .filter((id) => !toldIds.has(id));
+  const waitingKey = waiting.join(",");
+  useEffect(() => {
+    if (!waitingKey || !email.trim()) return;
+    const ids = waitingKey.split(",");
+    let stopped = false;
+    const check = async () => {
+      try {
+        const decided = await refundUpdates(email, ids);
+        if (!stopped) decided.forEach((detail) => tell.current(detail));
+      } catch {
+        // Try again on the next tick.
+      }
+    };
+    const timer = setInterval(check, 4000);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+  }, [waitingKey, email]);
 
   async function send(question: string) {
     question = question.trim();
@@ -212,7 +261,7 @@ export function AskCopper({
                 </p>
               ) : (
                 <SheetDescription className="text-xs text-white/70">
-                  Prices, totals and stock, checked with tools.
+                  Prices, stock, support and refunds, checked with tools.
                 </SheetDescription>
               )}
             </div>
@@ -301,8 +350,8 @@ export function AskCopper({
                 <div className="space-y-2">
                   {turns.length === 0 && (
                     <p className="text-muted-foreground text-sm">
-                      Hi, I&apos;m Copper! Ask me about prices, totals or stock.
-                      Try one of these:
+                      Hi, I&apos;m Copper! Ask me about prices, stock or a
+                      refund (add your order email above). Try one of these:
                     </p>
                   )}
                   {STARTERS.map((starter) => (
@@ -329,7 +378,7 @@ export function AskCopper({
                 aria-label="Your question"
                 value={draft}
                 onChange={(event) => setDraft(event.target.value)}
-                placeholder="Ask about prices or stock…"
+                placeholder="Ask about prices, stock or a refund…"
                 className="bg-background focus-visible:ring-ring h-10 flex-1 rounded-full border px-4 text-sm outline-none focus-visible:ring-2"
               />
               <Button

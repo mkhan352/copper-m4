@@ -3,28 +3,31 @@ import { Logo } from "@/components/copper/logo";
 import { ModeToggle } from "@/components/copper/mode-toggle";
 import { cn } from "@/lib/utils";
 
-// Four links don't fit beside the logo on a phone, so two section links are
-// hidden there.
+// The same header on every page. Section links start with "/" so they also
+// work from the Support page. They don't all fit beside the logo on a phone,
+// so only Support and Ask Copper show there.
 const LINKS = [
-  { href: "#products", label: "Products" },
-  { href: "#plus", label: "Copper Plus", phone: false },
-  { href: "#privacy", label: "Privacy", phone: false },
-  { href: "#ask", label: "Ask Copper" },
+  { href: "/#products", label: "Products", phone: false },
+  { href: "/#plus", label: "Copper Plus", phone: false },
+  { href: "/#privacy", label: "Privacy", phone: false },
+  { href: "/#refunds", label: "Refunds", phone: false },
+  { href: "/support", label: "Support" },
+  { href: "/#ask", label: "Ask Copper" },
 ];
 
 export function SiteHeader() {
   return (
     <header
       data-testid="site-header"
-      className="bg-background/90 sticky top-0 z-50 border-b backdrop-blur"
+      className="bg-background/90 sticky top-0 z-50 h-(--header-h) border-b backdrop-blur"
     >
-      <div className="mx-auto flex max-w-6xl items-center justify-between gap-2 px-4 py-3 sm:gap-4">
+      <div className="mx-auto flex h-full max-w-6xl items-center justify-between gap-2 px-4 sm:gap-4">
         <Link href="/" aria-label="Copper State Labs home" className="shrink-0">
           <Logo className="w-28 sm:w-40" />
         </Link>
         <nav aria-label="Main" className="flex items-center gap-1 sm:gap-4">
           {LINKS.map((link) => (
-            <a
+            <Link
               key={link.href}
               href={link.href}
               className={cn(
@@ -33,7 +36,7 @@ export function SiteHeader() {
               )}
             >
               {link.label}
-            </a>
+            </Link>
           ))}
           <ModeToggle />
         </nav>

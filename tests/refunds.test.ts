@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { decideRefund } from "@/lib/copper/admin/decide";
 import { decideInConsole } from "@/app/support/actions";
 import { decisionNotice } from "@/lib/copper/refunds/events";
+import { refundUpdates } from "@/lib/copper/refunds/updates";
 import {
   getAutoRefundLimit,
   setAutoRefundLimit,
@@ -392,6 +393,36 @@ describe("changeable limit and the Support page's actions", () => {
     );
     expect((await getStore().getOrder("ORD-1006"))?.refund_status).toBe("none");
     expect((await decideInConsole(finn.id, "rejected")).detail).toBeUndefined();
+  });
+});
+
+describe("refund updates in the chat on any page", () => {
+  it("tells a customer only about their own requests, and only once a person decided", async () => {
+    const created = await requestRefund(
+      "ava@example.com",
+      "ORD-1001",
+      "Too big",
+    );
+    const id = (created as { requestId: string }).requestId;
+    // Still waiting: nothing to tell yet.
+    expect(await refundUpdates("ava@example.com", [id])).toEqual([]);
+
+    await decideRefund(id, "approved", null);
+    expect(await refundUpdates("AVA@example.com ", [id])).toEqual([
+      expect.objectContaining({ requestId: id, status: "approved" }),
+    ]);
+    // Someone else's email, or no ids, gets nothing.
+    expect(await refundUpdates("finn@example.com", [id])).toEqual([]);
+    expect(await refundUpdates("ava@example.com", [])).toEqual([]);
+    expect(await refundUpdates("", [id])).toEqual([]);
+  });
+
+  it("an admin's Reject reaches the chat too", async () => {
+    const created = await requestRefund("finn@example.com", "ORD-1006", "No");
+    const id = (created as { requestId: string }).requestId;
+    await decideRefund(id, "rejected", null);
+    const [update] = await refundUpdates("finn@example.com", [id]);
+    expect(decisionNotice(update)).toMatch(/not refunded/);
   });
 });
 

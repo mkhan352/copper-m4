@@ -1,6 +1,8 @@
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { AskCopper } from "@/components/copper/ask-copper";
+import { SiteFooter } from "@/components/copper/site-footer";
+import { SiteHeader } from "@/components/copper/site-header";
 import {
   AutoRefresh,
   DecideButtons,
@@ -24,18 +26,25 @@ import type { RefundRequest } from "@/lib/copper/refunds/types";
 
 export const metadata = { title: "Support · Copper State Labs" };
 
+// Part of the main site: the same header and footer as the home page. The
+// Refund Console is on the left and the Ask Copper chat is docked on the
+// right, kept in view while the console scrolls.
 export default function SupportPage() {
   return (
-    <div className="bg-secondary flex h-screen">
-      <main className="flex-1 overflow-y-auto px-6 py-6">
-        <Suspense fallback={<p className="text-sm">Loading the console…</p>}>
-          <RefundConsole />
-        </Suspense>
-      </main>
-      <aside className="bg-background hidden h-screen w-full max-w-md shrink-0 border-l md:block">
-        <AskCopper aiConfigured={isAiConfigured()} docked />
-      </aside>
-    </div>
+    <>
+      <SiteHeader />
+      <div className="bg-secondary flex flex-1">
+        <main className="min-w-0 flex-1 px-4 py-6 sm:px-6">
+          <Suspense fallback={<p className="text-sm">Loading the console…</p>}>
+            <RefundConsole />
+          </Suspense>
+        </main>
+        <aside className="bg-background sticky top-[var(--header-h)] hidden h-[calc(100vh-var(--header-h))] w-full max-w-md shrink-0 border-l md:block">
+          <AskCopper aiConfigured={isAiConfigured()} docked />
+        </aside>
+      </div>
+      <SiteFooter />
+    </>
   );
 }
 
@@ -61,10 +70,12 @@ async function RefundConsole() {
       <AutoRefresh />
       <header className="space-y-3">
         <div>
-          <h1 className="text-2xl font-bold">Refund Console</h1>
+          <p className="text-primary text-sm font-semibold">Copper Support</p>
+          <h1 className="font-heading text-2xl font-bold">Refund Console</h1>
           <p className="text-muted-foreground text-sm">
-            Refunds under the limit are approved by the Refund agent on its own.
-            Refunds at or over it wait here for you.
+            Customers ask for refunds in the chat on the right (or in Ask Copper
+            on any page). Refunds under the limit are approved by the Refund
+            agent on its own. Refunds at or over it wait here for you.
             {!isDatabaseConfigured() && " (Demo memory store.)"}
           </p>
         </div>
