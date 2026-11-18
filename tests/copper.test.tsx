@@ -25,6 +25,18 @@ describe("Brand components", () => {
     ).toBeInTheDocument();
   });
 
+  it("On the Support page, the header's Ask Copper link points at the chat already on the page", () => {
+    render(<SiteHeader current="support" />);
+    expect(screen.getByRole("link", { name: "Ask Copper" })).toHaveAttribute(
+      "href",
+      "#ask",
+    );
+    expect(screen.getByRole("link", { name: "Support" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+  });
+
   it("SiteFooter shows the fictional-use label", () => {
     render(<SiteFooter />);
     expect(screen.getByRole("contentinfo")).toHaveTextContent(

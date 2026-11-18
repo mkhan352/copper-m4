@@ -5,7 +5,9 @@ import { cn } from "@/lib/utils";
 
 // The same header on every page. Section links start with "/" so they also
 // work from the Support page. They don't all fit beside the logo on a phone,
-// so only Support and Ask Copper show there.
+// so only Support and Ask Copper show there. On the Support page the chat is
+// already on the page, so "Ask Copper" points at it ("#ask") instead of
+// going back to the home page and opening a second one.
 const LINKS = [
   { href: "/#products", label: "Products", phone: false },
   { href: "/#plus", label: "Copper Plus", phone: false },
@@ -15,7 +17,12 @@ const LINKS = [
   { href: "/#ask", label: "Ask Copper" },
 ];
 
-export function SiteHeader() {
+export function SiteHeader({ current }: { current?: "support" } = {}) {
+  const links = LINKS.map((link) =>
+    current === "support" && link.label === "Ask Copper"
+      ? { ...link, href: "#ask" }
+      : link,
+  );
   return (
     <header
       data-testid="site-header"
@@ -26,13 +33,19 @@ export function SiteHeader() {
           <Logo className="w-28 sm:w-40" />
         </Link>
         <nav aria-label="Main" className="flex items-center gap-1 sm:gap-4">
-          {LINKS.map((link) => (
+          {links.map((link) => (
             <Link
               key={link.href}
               href={link.href}
+              aria-current={
+                current === "support" && link.href === "/support"
+                  ? "page"
+                  : undefined
+              }
               className={cn(
                 "text-foreground/80 hover:text-primary rounded-md px-1 py-1 text-sm font-medium whitespace-nowrap transition-colors sm:px-2",
                 link.phone === false && "hidden sm:inline",
+                "aria-[current=page]:text-primary",
               )}
             >
               {link.label}

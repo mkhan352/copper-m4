@@ -28,18 +28,20 @@ export const metadata = { title: "Support · Copper State Labs" };
 
 // Part of the main site: the same header and footer as the home page. The
 // Refund Console is on the left and the Ask Copper chat is docked on the
-// right, kept in view while the console scrolls.
+// right, kept in view while the console scrolls (on a phone it sits under
+// the console). This is the page's only chat: the header's Ask Copper link
+// points at it.
 export default function SupportPage() {
   return (
     <>
-      <SiteHeader />
-      <div className="bg-secondary flex flex-1">
+      <SiteHeader current="support" />
+      <div className="bg-secondary flex flex-1 flex-col md:flex-row">
         <main className="min-w-0 flex-1 px-4 py-6 sm:px-6">
           <Suspense fallback={<p className="text-sm">Loading the console…</p>}>
             <RefundConsole />
           </Suspense>
         </main>
-        <aside className="bg-background sticky top-[var(--header-h)] hidden h-[calc(100vh-var(--header-h))] w-full max-w-md shrink-0 border-l md:block">
+        <aside className="bg-background h-[85vh] shrink-0 border-t md:sticky md:top-(--header-h) md:h-[calc(100vh-var(--header-h))] md:w-full md:max-w-md md:border-t-0 md:border-l">
           <AskCopper aiConfigured={isAiConfigured()} docked />
         </aside>
       </div>

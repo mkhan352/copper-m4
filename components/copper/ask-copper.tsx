@@ -93,11 +93,22 @@ export function AskCopper({
   const busy = turns.at(-1)?.progress.status === "working";
 
   // Open from the header's #ask link or a page load at /#ask. Clicking the
-  // link again fires no hashchange, so listen for the click too.
+  // link again fires no hashchange, so listen for the click too. When the
+  // chat is docked on the page (Support), there is nothing to open: the link
+  // brings the docked chat into view and puts the cursor in the question box,
+  // so the page only ever has one chat.
+  const question = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    const openOnHash = () => window.location.hash === "#ask" && setOpen(true);
+    const show = () => {
+      if (!docked) return setOpen(true);
+      question.current?.scrollIntoView({ block: "nearest" });
+      question.current?.focus();
+    };
+    const openOnHash = () => window.location.hash === "#ask" && show();
     const openOnClick = (event: MouseEvent) => {
-      if ((event.target as Element).closest?.('a[href$="#ask"]')) setOpen(true);
+      if (!(event.target as Element).closest?.('a[href$="#ask"]')) return;
+      if (docked) event.preventDefault();
+      show();
     };
     openOnHash();
     window.addEventListener("hashchange", openOnHash);
@@ -106,7 +117,7 @@ export function AskCopper({
       window.removeEventListener("hashchange", openOnHash);
       document.removeEventListener("click", openOnClick);
     };
-  }, []);
+  }, [docked]);
 
   useEffect(() => {
     if (body.current) body.current.scrollTop = body.current.scrollHeight;
@@ -375,6 +386,7 @@ export function AskCopper({
               className="bg-background flex items-center gap-2 border-t p-3"
             >
               <input
+                ref={question}
                 aria-label="Your question"
                 value={draft}
                 onChange={(event) => setDraft(event.target.value)}
