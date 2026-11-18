@@ -113,7 +113,7 @@ Deciding is safe:
 - "Your order email" box with the six demo emails as suggestions.
 - Badge showing who is answering (Copper, or Refund specialist) and each agent's tool list.
 - Tool cards for the new tools: handoff, purchase history, rules (with "under the limit, no admin needed"), and the refund request (auto-approved or pending admin review).
-- On `/support` the panel is docked (no pop-out); elsewhere it is the usual slide-over.
+- On `/support` the panel is docked (no pop-out); elsewhere it is the usual slide-over. Each page has exactly one chat: on `/support` the header's "Ask Copper" link points at the docked chat (scrolls to it and puts the cursor in the question box) instead of opening a second one. On a phone the docked chat sits under the console.
 - Notices from the console appear as messages from the Refund specialist and are not sent to the model.
 
 ## 9. Agent instructions
